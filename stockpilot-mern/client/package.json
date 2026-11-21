@@ -1,0 +1,1 @@
+{"name":"stockpilot-client","private":true,"version":"1.0.0","type":"module","scripts":{"dev":"vite","build":"vite build"},"dependencies":{"canvas-confetti":"^1.9.4","lucide-react":"^1.77.0","react":"^18.3.1","react-dom":"^18.3.1","react-router-dom":"^7.18.6","recharts":"^3.11.0"},"devDependencies":{"@vitejs/plugin-react":"^4.3.1","vite":"^5.4.0"}}
