@@ -1,0 +1,10 @@
+{
+  "buildCommand": "cd stockpilot-mern/client && npm install && npm run build",
+  "outputDirectory": "stockpilot-mern/client/dist",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
