@@ -26,7 +26,33 @@ const {
 } = require('./lib/model');
 
 const app = express();
-app.use(cors());
+
+const allowedOrigins = [
+  'https://stock-pilot-ai-eight.vercel.app',
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:5000',
+  'http://localhost:3000'
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    if (
+      allowedOrigins.includes(origin) ||
+      origin.endsWith('.vercel.app') ||
+      origin.includes('localhost')
+    ) {
+      return callback(null, true);
+    }
+    return callback(null, true);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
+}));
+app.options('*', cors());
+
 app.use(express.json());
 
 const JWT_SECRET = process.env.JWT_SECRET || 'stockpilot_secret_key_2026';
@@ -416,50 +442,83 @@ app.post('/api/auth/login', async (req, res) => {
 app.post('/api/auth/register', async (req, res) => {
   const { name, company, email, password } = req.body;
   if (!name || !email || !password) {
-    return res.status(400).json({ error: 'Name, email, and password are required' });
+    console.log('[AUTH REGISTER] Validation failed: missing name, email, or password.');
+    return res.status(400).json({
+      message: 'Full name, email address, and password are required',
+      error: 'Full name, email address, and password are required'
+    });
   }
 
   const cleanEmail = String(email).trim().toLowerCase();
+  const cleanName = String(name).trim();
+  const cleanCompany = (company ? String(company).trim() : 'Travel Partners Ltd');
 
+  // 1. Log: Email received along with name & company (Never log passwords)
+  console.log(`[AUTH REGISTER] 1. Request received for: "${cleanEmail}" (Name: "${cleanName}", Company: "${cleanCompany}")`);
+
+  // Ensure DB connected if possible
+  if (mongoose.connection.readyState !== 1 && process.env.MONGO_URI) {
+    await ensureDbConnected().catch(() => {});
+  }
+
+  // 2. Log: Check whether user exists in MongoDB
   let existing = null;
+  let userFoundInMongo = false;
   if (isDbConnected()) {
     try {
       existing = await User.findOne({ email: cleanEmail });
-    } catch (err) {}
-  }
-
-  if (!existing) {
+      if (existing) userFoundInMongo = true;
+    } catch (err) {
+      console.warn('[AUTH REGISTER] MongoDB lookup error:', err.message);
+    }
+  } else {
     existing = inMemoryUsers.find(u => u.email.toLowerCase() === cleanEmail);
   }
 
+  console.log(`[AUTH REGISTER] 2. User exists check in MongoDB: found=${!!existing} (inMongo=${userFoundInMongo}, activeDb=${isDbConnected()})`);
+
   if (existing) {
-    return res.status(400).json({ error: 'An account with this email already exists. Please log in.' });
+    console.log(`[AUTH REGISTER] REJECTED: User "${cleanEmail}" already exists. Returning HTTP 400.`);
+    return res.status(400).json({
+      message: 'An account with this email already exists. Please log in.',
+      error: 'An account with this email already exists. Please log in.'
+    });
   }
 
+  // 3. Log: Hashing password and creating user in MongoDB
+  console.log(`[AUTH REGISTER] 3. Hashing password and creating user record in MongoDB...`);
   const passwordHash = bcrypt.hashSync(password, 10);
   let newUser = null;
+  let createdInMongo = false;
 
   if (isDbConnected()) {
     try {
       const created = await User.create({
-        name,
-        company: company || 'Travel Partners Ltd',
+        name: cleanName,
+        company: cleanCompany,
         email: cleanEmail,
         role: 'Procurement Director',
         isDemo: false,
         passwordHash
       });
       newUser = formatDoc(created);
+      createdInMongo = true;
     } catch (err) {
-      console.warn('DB register error, fallback to memory:', err.message);
+      console.error('[AUTH REGISTER] MongoDB User.create failed:', err.message);
+      if (err.code === 11000) {
+        return res.status(400).json({
+          message: 'An account with this email already exists. Please log in.',
+          error: 'An account with this email already exists. Please log in.'
+        });
+      }
     }
   }
 
   if (!newUser) {
     newUser = {
       id: 'user-' + Date.now(),
-      name,
-      company: company || 'Travel Partners Ltd',
+      name: cleanName,
+      company: cleanCompany,
       email: cleanEmail,
       role: 'Procurement Director',
       isDemo: false,
@@ -468,16 +527,22 @@ app.post('/api/auth/register', async (req, res) => {
     inMemoryUsers.push(newUser);
   }
 
+  const userId = (newUser.id || newUser._id).toString();
+
+  // 4. Log: Registration success
+  console.log(`[AUTH REGISTER] 4. User registered successfully. ID: ${userId} (inMongo=${createdInMongo})`);
+
   const token = jwt.sign(
-    { id: newUser.id || newUser._id, email: newUser.email, name: newUser.name, role: newUser.role, isDemo: false },
+    { id: userId, email: newUser.email, name: newUser.name, role: newUser.role, isDemo: false },
     JWT_SECRET,
     { expiresIn: '7d' }
   );
 
-  res.status(201).json({
+  return res.status(201).json({
+    message: 'User registered successfully',
     token,
     user: {
-      id: newUser.id || newUser._id,
+      id: userId,
       name: newUser.name,
       email: newUser.email,
       company: newUser.company,

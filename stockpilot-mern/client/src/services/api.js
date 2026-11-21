@@ -1,7 +1,8 @@
 // StockPilot AI Unified API Client with Instant Offline Demo Fallback
 import { demoStore, computeNewsvendor, computeSimulation } from './demoEngine';
+import { buildApiUrl } from './apiConfig';
 
-const API_TIMEOUT = 1800; // 1.8 seconds max wait for live server before falling back to demo store
+const API_TIMEOUT = 5000; // 5.0 seconds max wait for live server before falling back to demo store
 
 async function safeFetch(url, options = {}) {
   const token = localStorage.getItem('stockpilot_token');
@@ -12,7 +13,8 @@ async function safeFetch(url, options = {}) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
   try {
-    const res = await fetch(url, { ...options, headers, signal: controller.signal });
+    const fullUrl = buildApiUrl(url);
+    const res = await fetch(fullUrl, { ...options, headers, signal: controller.signal });
     clearTimeout(timeoutId);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { buildApiUrl } from '../services/apiConfig';
 
 const AuthContext = createContext();
 
@@ -27,7 +28,7 @@ export function AuthProvider({ children }) {
       }
 
       try {
-        const res = await fetch('/api/auth/me', {
+        const res = await fetch(buildApiUrl('/api/auth/me'), {
           headers: { Authorization: `Bearer ${storedToken}` }
         });
 
@@ -83,16 +84,16 @@ export function AuthProvider({ children }) {
 
     let res;
     try {
-      res = await fetch('/api/auth/login', {
+      res = await fetch(buildApiUrl('/api/auth/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: cleanEmail, password })
       });
     } catch (networkErr) {
-      throw new Error('Unable to connect to authentication server. Please check your network connection.');
+      throw new Error('Unable to connect to authentication server. The backend may be spinning up, please try again in a few moments.');
     }
 
-    // Verify response is valid JSON (protect against Vercel HTML rewrites)
+    // Verify response is valid JSON (protect against HTML rewrites)
     const contentType = res.headers.get('content-type') || '';
     if (!contentType.includes('application/json')) {
       throw new Error('Authentication service unavailable. Please try again.');
@@ -102,7 +103,7 @@ export function AuthProvider({ children }) {
 
     if (!res.ok) {
       // Show exact server error message (e.g. "Account not found. Please sign up first.")
-      throw new Error(data.error || 'Authentication failed');
+      throw new Error(data.message || data.error || 'Authentication failed');
     }
 
     if (!data.token || !data.user) {
@@ -127,7 +128,7 @@ export function AuthProvider({ children }) {
 
     let res;
     try {
-      res = await fetch('/api/auth/demo', {
+      res = await fetch(buildApiUrl('/api/auth/demo'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -142,7 +143,7 @@ export function AuthProvider({ children }) {
 
     const data = await res.json();
     if (!res.ok) {
-      throw new Error(data.error || 'Failed to initialize demo session');
+      throw new Error(data.message || data.error || 'Failed to initialize demo session');
     }
 
     setUser(data.user);
@@ -161,25 +162,35 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('stockpilot_token');
 
     const cleanEmail = (email || '').trim().toLowerCase();
+    const cleanName = (name || '').trim();
+    if (!cleanName || !cleanEmail || !password) {
+      throw new Error('Full name, email, and password are required');
+    }
+
     let res;
     try {
-      res = await fetch('/api/auth/register', {
+      res = await fetch(buildApiUrl('/api/auth/register'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: (name || '').trim(), company: (company || '').trim(), email: cleanEmail, password })
+        body: JSON.stringify({ name: cleanName, company: (company || '').trim(), email: cleanEmail, password })
       });
     } catch (err) {
-      throw new Error('Unable to connect to registration server. Please try again.');
+      throw new Error('Unable to connect to registration server. The backend may be spinning up, please try again in a few moments.');
     }
 
     const contentType = res.headers.get('content-type') || '';
     if (!contentType.includes('application/json')) {
-      throw new Error('Registration service unavailable.');
+      throw new Error('Registration service unavailable. Please check backend connection.');
     }
 
     const data = await res.json();
     if (!res.ok) {
-      throw new Error(data.error || 'Registration failed');
+      // Do not hide actual backend error message
+      throw new Error(data.message || data.error || 'Registration failed');
+    }
+
+    if (!data.token || !data.user) {
+      throw new Error('Invalid registration response from server.');
     }
 
     setUser(data.user);
