@@ -40,3 +40,6 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
+
+# Temporary Submission Extraction Folder
+StockPilot-AI-Submission/
