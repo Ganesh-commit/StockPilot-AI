@@ -162,6 +162,34 @@ async function initDatabase() {
   }
 }
 
+// Middleware: Ensure database connection is active (critical for Serverless environments like Vercel)
+let isConnecting = false;
+async function ensureDbConnected() {
+  if (mongoose.connection.readyState === 1) return true;
+  if (isConnecting) return false;
+  const mongoUri = process.env.MONGO_URI;
+  if (!mongoUri || mongoUri.includes('<cluster-host>')) return false;
+  try {
+    isConnecting = true;
+    await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 5000 });
+    console.log('✅ Connected to MongoDB Atlas:', mongoose.connection.host);
+    await initDatabase();
+    return true;
+  } catch (err) {
+    console.warn('MongoDB connection attempt failed:', err.message);
+    return false;
+  } finally {
+    isConnecting = false;
+  }
+}
+
+app.use(async (req, res, next) => {
+  if (mongoose.connection.readyState !== 1 && process.env.MONGO_URI) {
+    await ensureDbConnected().catch(() => {});
+  }
+  next();
+});
+
 // ----------------- HEALTH CHECK -----------------
 app.get('/api/health', async (req, res) => {
   let count = inMemoryItems.length;
@@ -298,43 +326,81 @@ app.post('/api/demo/reset', async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required' });
+    return res.status(401).json({
+      message: 'Email and password are required',
+      error: 'Email and password are required'
+    });
   }
 
   const cleanEmail = String(email).trim().toLowerCase();
 
+  // 1. Log: Email received
+  console.log(`[AUTH LOGIN] 1. Email received: "${cleanEmail}"`);
+
   let user = null;
+  let userFoundInMongo = false;
+
+  // Ensure DB connected if possible
+  if (mongoose.connection.readyState !== 1 && process.env.MONGO_URI) {
+    await ensureDbConnected().catch(() => {});
+  }
+
+  // 2. Log: Whether a user was found in MongoDB
   if (isDbConnected()) {
     try {
       const dbUser = await User.findOne({ email: cleanEmail });
-      if (dbUser) user = formatDoc(dbUser);
+      if (dbUser) {
+        user = formatDoc(dbUser);
+        userFoundInMongo = true;
+      }
     } catch (err) {
-      console.warn('DB user lookup error:', err.message);
+      console.warn('[AUTH LOGIN] DB lookup error:', err.message);
     }
   } else {
-    // Only when MongoDB is offline, check in-memory store
-    user = inMemoryUsers.find(u => u.email.toLowerCase() === cleanEmail);
+    // Only check in-memory store when MongoDB is offline
+    const memUser = inMemoryUsers.find(u => u.email.toLowerCase() === cleanEmail);
+    if (memUser) {
+      user = memUser;
+    }
   }
 
-  // 1. If account does not exist, return appropriate 404 error
+  console.log(`[AUTH LOGIN] 2. User found in MongoDB: ${userFoundInMongo} (activeDb: ${isDbConnected()})`);
+
+  // Expected Behavior: If user does not exist in MongoDB:
+  // Return HTTP 401 and JSON: {"message":"Account not found. Please sign up first."}
   if (!user) {
-    return res.status(404).json({ error: 'Account not found. Please sign up first.' });
+    console.log(`[AUTH LOGIN] REJECTED: User "${cleanEmail}" does not exist. Returning HTTP 401.`);
+    return res.status(401).json({
+      message: 'Account not found. Please sign up first.',
+      error: 'Account not found. Please sign up first.'
+    });
   }
 
-  // 2. Verify password with bcrypt comparison
-  if (!user.passwordHash || !bcrypt.compareSync(password, user.passwordHash)) {
-    return res.status(401).json({ error: 'Invalid email or password.' });
+  // 3. Log: Whether password comparison succeeded
+  const passwordMatch = !!(user.passwordHash && bcrypt.compareSync(password, user.passwordHash));
+  console.log(`[AUTH LOGIN] 3. Password comparison succeeded: ${passwordMatch}`);
+
+  // Expected Behavior: If password is incorrect:
+  // Return HTTP 401 and JSON: {"message":"Invalid email or password."}
+  if (!passwordMatch) {
+    console.log(`[AUTH LOGIN] REJECTED: Password incorrect for "${cleanEmail}". Returning HTTP 401.`);
+    return res.status(401).json({
+      message: 'Invalid email or password.',
+      error: 'Invalid email or password.'
+    });
   }
 
-  // 3. User successfully authenticated -> issue valid JWT token
+  // 4. Log: Whether JWT generation was executed
   const isDemo = !!(user.isDemo || user.email === 'demo@stockpilot.ai');
   const token = jwt.sign(
     { id: user.id || user._id, email: user.email, name: user.name, role: user.role, isDemo },
     JWT_SECRET,
     { expiresIn: '7d' }
   );
+  console.log(`[AUTH LOGIN] 4. JWT generation executed: true (User ID: ${user.id || user._id})`);
 
-  return res.json({
+  // Return HTTP 200 with valid authentication response
+  return res.status(200).json({
     token,
     user: {
       id: user.id || user._id,
@@ -811,7 +877,11 @@ app.post('/api/notifications/mark-read', async (req, res) => {
     console.log('ℹ️ Running with local in-memory fallback. Add valid MONGO_URI in .env to connect Atlas.');
   }
 
-  app.listen(PORT, () => {
-    console.log(`🚀 StockPilot AI API running on http://localhost:${PORT}`);
-  });
+  if (require.main === module) {
+    app.listen(PORT, () => {
+      console.log(`🚀 StockPilot AI API running on http://localhost:${PORT}`);
+    });
+  }
 })();
+
+module.exports = app;
