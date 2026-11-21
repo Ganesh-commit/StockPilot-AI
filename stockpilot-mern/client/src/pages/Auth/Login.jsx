@@ -24,8 +24,13 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [demoLoading, setDemoLoading] = useState(false);
 
-  const { login, loginDemo } = useAuth();
+  const { login, loginDemo, logout } = useAuth();
   const navigate = useNavigate();
+
+  // Ensure any previous or stale session is purged when visiting the login page
+  React.useEffect(() => {
+    logout();
+  }, []);
 
   const handleSubmit = async e => {
     e.preventDefault();

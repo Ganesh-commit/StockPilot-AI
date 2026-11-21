@@ -12,8 +12,12 @@ export default function Signup() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { signup } = useAuth();
+  const { signup, logout } = useAuth();
   const navigate = useNavigate();
+
+  React.useEffect(() => {
+    logout();
+  }, []);
 
   const handleSubmit = async e => {
     e.preventDefault();

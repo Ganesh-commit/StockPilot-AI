@@ -3,55 +3,60 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 const AuthContext = createContext();
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem('stockpilot_user');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return null;
-      }
-    }
-    return null;
-  });
-
-  const [token, setToken] = useState(() => localStorage.getItem('stockpilot_token') || null);
+  const [user, setUser] = useState(null);
+  const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Validate session with backend on load / refresh
+  // Validate session strictly with backend on initial load / refresh
   useEffect(() => {
     let isMounted = true;
+
     const validateSession = async () => {
       const storedToken = localStorage.getItem('stockpilot_token');
-      if (!storedToken) {
+      const storedUser = localStorage.getItem('stockpilot_user');
+
+      if (!storedToken || !storedUser) {
         if (isMounted) {
           setUser(null);
           setToken(null);
+          localStorage.removeItem('stockpilot_user');
+          localStorage.removeItem('stockpilot_token');
           setLoading(false);
         }
         return;
       }
+
       try {
         const res = await fetch('/api/auth/me', {
           headers: { Authorization: `Bearer ${storedToken}` }
         });
-        if (res.ok) {
+
+        const contentType = res.headers.get('content-type') || '';
+        if (res.ok && contentType.includes('application/json')) {
           const data = await res.json();
           if (isMounted && data.user) {
             setUser(data.user);
+            setToken(storedToken);
             localStorage.setItem('stockpilot_user', JSON.stringify(data.user));
-          }
-        } else {
-          // Token is invalid or expired — purge session
-          if (isMounted) {
-            setUser(null);
-            setToken(null);
-            localStorage.removeItem('stockpilot_user');
-            localStorage.removeItem('stockpilot_token');
+            return;
           }
         }
+
+        // If backend rejected token or returned non-JSON, PURGE invalid session!
+        if (isMounted) {
+          setUser(null);
+          setToken(null);
+          localStorage.removeItem('stockpilot_user');
+          localStorage.removeItem('stockpilot_token');
+        }
       } catch (err) {
-        // Network failure: preserve local session if present, do not crash
+        // Unverified token cannot grant access — purge session
+        if (isMounted) {
+          setUser(null);
+          setToken(null);
+          localStorage.removeItem('stockpilot_user');
+          localStorage.removeItem('stockpilot_token');
+        }
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -63,66 +68,125 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
-  useEffect(() => {
-    if (user) {
-      localStorage.setItem('stockpilot_user', JSON.stringify(user));
-    } else {
-      localStorage.removeItem('stockpilot_user');
-    }
-  }, [user]);
-
-  useEffect(() => {
-    if (token) {
-      localStorage.setItem('stockpilot_token', token);
-    } else {
-      localStorage.removeItem('stockpilot_token');
-    }
-  }, [token]);
-
-  // Strict Login: requires valid registered credentials
+  // Strict Login: requires existing registered account in MongoDB
   const login = async (email, password) => {
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password })
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || 'Invalid credentials');
+    // 1. Instantly purge any stale session state
+    setUser(null);
+    setToken(null);
+    localStorage.removeItem('stockpilot_user');
+    localStorage.removeItem('stockpilot_token');
+
+    const cleanEmail = (email || '').trim().toLowerCase();
+    if (!cleanEmail || !password) {
+      throw new Error('Email and password are required');
     }
+
+    let res;
+    try {
+      res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleanEmail, password })
+      });
+    } catch (networkErr) {
+      throw new Error('Unable to connect to authentication server. Please check your network connection.');
+    }
+
+    // Verify response is valid JSON (protect against Vercel HTML rewrites)
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error('Authentication service unavailable. Please try again.');
+    }
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      // Show exact server error message (e.g. "Account not found. Please sign up first.")
+      throw new Error(data.error || 'Authentication failed');
+    }
+
+    if (!data.token || !data.user) {
+      throw new Error('Invalid authentication response from server.');
+    }
+
+    // Valid authenticated user confirmed
     setUser(data.user);
     setToken(data.token);
+    localStorage.setItem('stockpilot_user', JSON.stringify(data.user));
+    localStorage.setItem('stockpilot_token', data.token);
+
     return data;
   };
 
-  // Explicit Demo Session: cleanly separated
+  // Explicit Demo Session: cleanly separated from standard login
   const loginDemo = async () => {
-    const res = await fetch('/api/auth/demo', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
-    });
+    setUser(null);
+    setToken(null);
+    localStorage.removeItem('stockpilot_user');
+    localStorage.removeItem('stockpilot_token');
+
+    let res;
+    try {
+      res = await fetch('/api/auth/demo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+    } catch (err) {
+      throw new Error('Unable to connect to demo server. Please try again.');
+    }
+
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error('Demo service unavailable.');
+    }
+
     const data = await res.json();
     if (!res.ok) {
       throw new Error(data.error || 'Failed to initialize demo session');
     }
+
     setUser(data.user);
     setToken(data.token);
+    localStorage.setItem('stockpilot_user', JSON.stringify(data.user));
+    localStorage.setItem('stockpilot_token', data.token);
+
     return data;
   };
 
   // User Registration
   const signup = async (name, company, email, password) => {
-    const res = await fetch('/api/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, company, email, password })
-    });
+    setUser(null);
+    setToken(null);
+    localStorage.removeItem('stockpilot_user');
+    localStorage.removeItem('stockpilot_token');
+
+    const cleanEmail = (email || '').trim().toLowerCase();
+    let res;
+    try {
+      res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: (name || '').trim(), company: (company || '').trim(), email: cleanEmail, password })
+      });
+    } catch (err) {
+      throw new Error('Unable to connect to registration server. Please try again.');
+    }
+
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error('Registration service unavailable.');
+    }
+
     const data = await res.json();
     if (!res.ok) {
       throw new Error(data.error || 'Registration failed');
     }
+
     setUser(data.user);
     setToken(data.token);
+    localStorage.setItem('stockpilot_user', JSON.stringify(data.user));
+    localStorage.setItem('stockpilot_token', data.token);
+
     return data;
   };
 

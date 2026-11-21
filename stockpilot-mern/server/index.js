@@ -311,9 +311,8 @@ app.post('/api/auth/login', async (req, res) => {
     } catch (err) {
       console.warn('DB user lookup error:', err.message);
     }
-  }
-
-  if (!user) {
+  } else {
+    // Only when MongoDB is offline, check in-memory store
     user = inMemoryUsers.find(u => u.email.toLowerCase() === cleanEmail);
   }
 
