@@ -21,7 +21,7 @@ An enterprise-grade, AI-powered travel inventory procurement, multi-horizon dema
 
 <br />
 
-[Live Application](#-quick-start--installation) • [Key Features](#-core-functional-modules) • [Mathematical Formulations](#-mathematical-models--algorithms) • [System Architecture](#-system-architecture) • [API Reference](#-api-documentation) • [Demo Account](#-public-demo-account-experience)
+[Live Application](https://stock-pilot-ai-eight.vercel.app/) • [Key Features](#-core-functional-modules) • [Mathematical Formulations](#-mathematical-models--algorithms) • [System Architecture](#-system-architecture) • [API Reference](#-api-documentation) • [Demo Account](#-public-demo-account-experience)
 
 ---
 
@@ -536,8 +536,18 @@ This project is currently maintained for development and demonstration purposes.
 
 ---
 
+## 🌐 Live Deployed Application
+
+Experience the full StockPilot AI platform live in production:
+
+- 🔗 **Production App:** [https://stock-pilot-ai-eight.vercel.app/](https://stock-pilot-ai-eight.vercel.app/)
+- ⚡ **Backend API (Render):** [https://stockpilot-ai-ui9o.onrender.com/api/health](https://stockpilot-ai-ui9o.onrender.com/api/health)
+
+---
+
 <div align="center">
 
-**StockPilot AI** · *Built with precision for the future of travel revenue management.*
+**StockPilot AI** · *Built with precision for the future of travel revenue management.*  
+🚀 **Live URL:** [https://stock-pilot-ai-eight.vercel.app/](https://stock-pilot-ai-eight.vercel.app/)
 
 </div>
