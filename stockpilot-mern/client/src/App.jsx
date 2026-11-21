@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext.jsx';
+import ProtectedRoute from './components/ProtectedRoute.jsx';
 import LandingPage from './pages/LandingPage/LandingPage.jsx';
 import Login from './pages/Auth/Login.jsx';
 import Signup from './pages/Auth/Signup.jsx';
@@ -29,121 +30,149 @@ export default function App() {
           {/* Public Landing Page */}
           <Route path="/" element={<LandingPage />} />
 
-          {/* Authentication */}
+          {/* Authentication Pages */}
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
 
-          {/* Protected Application Dashboard */}
+          {/* Protected Application Dashboard Routes */}
           <Route
             path="/dashboard"
             element={
-              <AppLayout>
-                <Overview />
-              </AppLayout>
+              <ProtectedRoute>
+                <AppLayout>
+                  <Overview />
+                </AppLayout>
+              </ProtectedRoute>
             }
           />
           <Route
             path="/dashboard/forecasting"
             element={
-              <AppLayout>
-                <Forecasting />
-              </AppLayout>
+              <ProtectedRoute>
+                <AppLayout>
+                  <Forecasting />
+                </AppLayout>
+              </ProtectedRoute>
             }
           />
           <Route
             path="/dashboard/accuracy"
             element={
-              <AppLayout>
-                <ForecastAccuracy />
-              </AppLayout>
+              <ProtectedRoute>
+                <AppLayout>
+                  <ForecastAccuracy />
+                </AppLayout>
+              </ProtectedRoute>
             }
           />
           <Route
             path="/dashboard/inventory"
             element={
-              <AppLayout>
-                <Inventory />
-              </AppLayout>
+              <ProtectedRoute>
+                <AppLayout>
+                  <Inventory />
+                </AppLayout>
+              </ProtectedRoute>
             }
           />
           <Route
             path="/dashboard/procurement"
             element={
-              <AppLayout>
-                <Procurement />
-              </AppLayout>
+              <ProtectedRoute>
+                <AppLayout>
+                  <Procurement />
+                </AppLayout>
+              </ProtectedRoute>
             }
           />
           <Route
             path="/dashboard/newsvendor"
             element={
-              <AppLayout>
-                <NewsvendorOptimizer />
-              </AppLayout>
+              <ProtectedRoute>
+                <AppLayout>
+                  <NewsvendorOptimizer />
+                </AppLayout>
+              </ProtectedRoute>
             }
           />
           <Route
             path="/dashboard/optimizer"
             element={
-              <AppLayout>
-                <BudgetOptimizer />
-              </AppLayout>
+              <ProtectedRoute>
+                <AppLayout>
+                  <BudgetOptimizer />
+                </AppLayout>
+              </ProtectedRoute>
             }
           />
           <Route
             path="/dashboard/simulator"
             element={
-              <AppLayout>
-                <ScenarioSimulator />
-              </AppLayout>
+              <ProtectedRoute>
+                <AppLayout>
+                  <ScenarioSimulator />
+                </AppLayout>
+              </ProtectedRoute>
             }
           />
           <Route
             path="/dashboard/suppliers"
             element={
-              <AppLayout>
-                <SupplierIntelligence />
-              </AppLayout>
+              <ProtectedRoute>
+                <AppLayout>
+                  <SupplierIntelligence />
+                </AppLayout>
+              </ProtectedRoute>
             }
           />
           <Route
             path="/dashboard/risk"
             element={
-              <AppLayout>
-                <RiskAnalysis />
-              </AppLayout>
+              <ProtectedRoute>
+                <AppLayout>
+                  <RiskAnalysis />
+                </AppLayout>
+              </ProtectedRoute>
             }
           />
           <Route
             path="/dashboard/portfolio"
             element={
-              <AppLayout>
-                <Portfolio />
-              </AppLayout>
+              <ProtectedRoute>
+                <AppLayout>
+                  <Portfolio />
+                </AppLayout>
+              </ProtectedRoute>
             }
           />
           <Route
             path="/dashboard/reports"
             element={
-              <AppLayout>
-                <Reports />
-              </AppLayout>
+              <ProtectedRoute>
+                <AppLayout>
+                  <Reports />
+                </AppLayout>
+              </ProtectedRoute>
             }
           />
           <Route
             path="/dashboard/notifications"
             element={
-              <AppLayout>
-                <Notifications />
-              </AppLayout>
+              <ProtectedRoute>
+                <AppLayout>
+                  <Notifications />
+                </AppLayout>
+              </ProtectedRoute>
             }
           />
           <Route
             path="/dashboard/settings"
             element={
-              <AppLayout>
-                <Settings />
-              </AppLayout>
+              <ProtectedRoute>
+                <AppLayout>
+                  <Settings />
+                </AppLayout>
+              </ProtectedRoute>
             }
           />
 

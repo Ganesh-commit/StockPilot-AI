@@ -297,14 +297,16 @@ app.post('/api/demo/reset', async (req, res) => {
 
 app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body;
-  if (!email) {
-    return res.status(400).json({ error: 'Email is required' });
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required' });
   }
+
+  const cleanEmail = String(email).trim().toLowerCase();
 
   let user = null;
   if (isDbConnected()) {
     try {
-      const dbUser = await User.findOne({ email: email.toLowerCase() });
+      const dbUser = await User.findOne({ email: cleanEmail });
       if (dbUser) user = formatDoc(dbUser);
     } catch (err) {
       console.warn('DB user lookup error:', err.message);
@@ -312,35 +314,20 @@ app.post('/api/auth/login', async (req, res) => {
   }
 
   if (!user) {
-    user = inMemoryUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
+    user = inMemoryUsers.find(u => u.email.toLowerCase() === cleanEmail);
   }
 
-  if (!user && (email === 'demo@stockpilot.ai' || password === 'demo123')) {
-    user = OFFICIAL_DEMO_USER;
-  }
-
+  // 1. If account does not exist, return appropriate 404 error
   if (!user) {
-    const newUserObj = {
-      name: email.split('@')[0],
-      email: email.toLowerCase(),
-      company: 'Global Travel Aggregators',
-      role: 'Procurement Specialist',
-      isDemo: false,
-      passwordHash: bcrypt.hashSync(password || 'password', 10)
-    };
-    if (isDbConnected()) {
-      try {
-        const created = await User.create(newUserObj);
-        user = formatDoc(created);
-      } catch (e) {
-        user = { id: 'user-' + Date.now(), ...newUserObj };
-      }
-    } else {
-      user = { id: 'user-' + Date.now(), ...newUserObj };
-    }
-    inMemoryUsers.push(user);
+    return res.status(404).json({ error: 'Account not found. Please sign up first.' });
   }
 
+  // 2. Verify password with bcrypt comparison
+  if (!user.passwordHash || !bcrypt.compareSync(password, user.passwordHash)) {
+    return res.status(401).json({ error: 'Invalid email or password.' });
+  }
+
+  // 3. User successfully authenticated -> issue valid JWT token
   const isDemo = !!(user.isDemo || user.email === 'demo@stockpilot.ai');
   const token = jwt.sign(
     { id: user.id || user._id, email: user.email, name: user.name, role: user.role, isDemo },
@@ -348,7 +335,7 @@ app.post('/api/auth/login', async (req, res) => {
     { expiresIn: '7d' }
   );
 
-  res.json({
+  return res.json({
     token,
     user: {
       id: user.id || user._id,
@@ -367,58 +354,65 @@ app.post('/api/auth/register', async (req, res) => {
     return res.status(400).json({ error: 'Name, email, and password are required' });
   }
 
+  const cleanEmail = String(email).trim().toLowerCase();
+
+  let existing = null;
   if (isDbConnected()) {
     try {
-      const existing = await User.findOne({ email: email.toLowerCase() });
-      if (existing) {
-        return res.status(400).json({ error: 'User already exists with this email' });
-      }
+      existing = await User.findOne({ email: cleanEmail });
+    } catch (err) {}
+  }
+
+  if (!existing) {
+    existing = inMemoryUsers.find(u => u.email.toLowerCase() === cleanEmail);
+  }
+
+  if (existing) {
+    return res.status(400).json({ error: 'An account with this email already exists. Please log in.' });
+  }
+
+  const passwordHash = bcrypt.hashSync(password, 10);
+  let newUser = null;
+
+  if (isDbConnected()) {
+    try {
       const created = await User.create({
         name,
         company: company || 'Travel Partners Ltd',
-        email: email.toLowerCase(),
+        email: cleanEmail,
         role: 'Procurement Director',
         isDemo: false,
-        passwordHash: bcrypt.hashSync(password, 10)
+        passwordHash
       });
-      const user = formatDoc(created);
-      const token = jwt.sign(
-        { id: user.id || user._id, email: user.email, name: user.name, role: user.role, isDemo: false },
-        JWT_SECRET,
-        { expiresIn: '7d' }
-      );
-      return res.json({ token, user });
+      newUser = formatDoc(created);
     } catch (err) {
       console.warn('DB register error, fallback to memory:', err.message);
     }
   }
 
-  const existing = inMemoryUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
-  if (existing) {
-    return res.status(400).json({ error: 'User already exists with this email' });
+  if (!newUser) {
+    newUser = {
+      id: 'user-' + Date.now(),
+      name,
+      company: company || 'Travel Partners Ltd',
+      email: cleanEmail,
+      role: 'Procurement Director',
+      isDemo: false,
+      passwordHash
+    };
+    inMemoryUsers.push(newUser);
   }
 
-  const newUser = {
-    id: 'user-' + Date.now(),
-    name,
-    company: company || 'Travel Partners Ltd',
-    email: email.toLowerCase(),
-    role: 'Procurement Director',
-    isDemo: false,
-    passwordHash: bcrypt.hashSync(password, 10)
-  };
-  inMemoryUsers.push(newUser);
-
   const token = jwt.sign(
-    { id: newUser.id, email: newUser.email, name: newUser.name, role: newUser.role, isDemo: false },
+    { id: newUser.id || newUser._id, email: newUser.email, name: newUser.name, role: newUser.role, isDemo: false },
     JWT_SECRET,
     { expiresIn: '7d' }
   );
 
-  res.json({
+  res.status(201).json({
     token,
     user: {
-      id: newUser.id,
+      id: newUser.id || newUser._id,
       name: newUser.name,
       email: newUser.email,
       company: newUser.company,
@@ -430,21 +424,29 @@ app.post('/api/auth/register', async (req, res) => {
 
 app.get('/api/auth/me', async (req, res) => {
   const authHeader = req.headers.authorization;
-  if (!authHeader) {
-    return res.json({ user: OFFICIAL_DEMO_USER });
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Authorization header required' });
   }
   try {
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, JWT_SECRET);
 
+    let user = null;
     if (isDbConnected() && decoded.id) {
       try {
         const dbUser = await User.findById(decoded.id);
-        if (dbUser) return res.json({ user: formatDoc(dbUser) });
+        if (dbUser) user = formatDoc(dbUser);
       } catch (e) { }
     }
 
-    const user = inMemoryUsers.find(u => u.id === decoded.id || u.email === decoded.email) || OFFICIAL_DEMO_USER;
+    if (!user) {
+      user = inMemoryUsers.find(u => u.id === decoded.id || u.email === decoded.email);
+    }
+
+    if (!user) {
+      return res.status(401).json({ error: 'User session expired or not found' });
+    }
+
     res.json({
       user: {
         id: user.id || user._id,
@@ -456,7 +458,7 @@ app.get('/api/auth/me', async (req, res) => {
       }
     });
   } catch (e) {
-    res.json({ user: OFFICIAL_DEMO_USER });
+    return res.status(401).json({ error: 'Invalid or expired authentication token' });
   }
 });
 

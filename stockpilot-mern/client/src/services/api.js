@@ -4,10 +4,15 @@ import { demoStore, computeNewsvendor, computeSimulation } from './demoEngine';
 const API_TIMEOUT = 1800; // 1.8 seconds max wait for live server before falling back to demo store
 
 async function safeFetch(url, options = {}) {
+  const token = localStorage.getItem('stockpilot_token');
+  const headers = { ...(options.headers || {}) };
+  if (token && !headers['Authorization']) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT);
   try {
-    const res = await fetch(url, { ...options, signal: controller.signal });
+    const res = await fetch(url, { ...options, headers, signal: controller.signal });
     clearTimeout(timeoutId);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();

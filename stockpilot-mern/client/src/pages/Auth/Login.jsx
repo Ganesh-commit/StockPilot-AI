@@ -17,8 +17,8 @@ import {
 import confetti from 'canvas-confetti';
 
 export default function Login() {
-  const [email, setEmail] = useState('demo@stockpilot.ai');
-  const [password, setPassword] = useState('demo123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
